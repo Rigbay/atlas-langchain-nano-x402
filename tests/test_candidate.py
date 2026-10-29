@@ -154,6 +154,13 @@ class Tests(unittest.TestCase):
         self.assertEqual((self.signer.calls, self.transport.presented), (1, 0))
         self.assertIn("a" * 64, self.path.read_text())
 
+    def test_expired_after_header_construction_is_not_presented(self):
+        ticks = iter([0, 1, 2, 3, 4, 61])
+        self.client.clock = lambda: next(ticks)
+        with self.assertRaises(Refused): self.call()
+        self.assertEqual((self.signer.calls, self.transport.presented), (1, 0))
+        self.assertIn("a" * 64, self.path.read_text())
+
     def test_corrupt_or_missing_journal_fails_closed(self):
         with self.path.open("ab") as f: f.write(b"not-json")
         self.reject_before_signing()

@@ -272,6 +272,8 @@ class GuardedClient:
                 if self.clock() - started >= ttl:
                     raise Refused("quote expired after signing; reservation retained")
                 header = build_payment_header(quote, offer, block, destination)
+                if self.clock() - started >= ttl:
+                    raise Refused("quote expired before presentation; reservation retained")
                 paid_response = self.transport.post(self.policy.endpoint, body, header)
                 # A non-2xx or exception can mean money moved: leave it unresolved.
                 if not 200 <= paid_response.status_code < 300:
