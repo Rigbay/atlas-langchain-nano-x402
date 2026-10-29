@@ -4,11 +4,10 @@ keep-until: permanent
 
 # Guarded LangChain Nano x402 candidate
 
-**Status: experimental.** The real buyer's unpaid quote was observed, a LangChain
-agent called this tool against local HTTP, and synthetic block signing was
-checked. No real wallet payment, public repository, independent security review,
-isolated buyer-container test or buyer acceptance has occurred. Do not treat this as
-production-ready or a passing bounty claim.
+**Status: experimental.** A LangChain agent called this tool against local HTTP,
+and synthetic block signing was checked. A paid call and buyer acceptance need
+their own evidence; neither follows from a passing test or a public repository.
+There has been no independent security review or isolated buyer-container test.
 
 This tool makes one direct POST to a configured HTTPS endpoint. A 402 response
 must offer one exact Nano mainnet payment to an allowlisted destination and fit
@@ -19,7 +18,7 @@ quotes, duplicate requests, an incomplete journal, and a prior unresolved call.
 
 ## Install and offline tests
 
-The package pins LangChain 1.4.7 and feeless402 0.2.13. In a disposable Python
+The package pins LangChain 1.4.7, feeless402 0.2.13 and nanopy 28.0.1.post26. In a disposable Python
 3.11+ environment, install `python -m pip install .` and run:
 
 ```sh
@@ -40,8 +39,10 @@ isolated container or a live payment test.
 
 `examples/live_agent.py` calls the guarded tool from a real LangChain agent loop
 with a scripted chat model. It requires `--live` and an existing, explicitly
-supplied wallet, RPC URL, destination and journal; it never creates or funds a
-wallet. The tool is pinned to `https://pursekeeper.dev/v1/hash` and the example
+supplied wallet, destination and journal; it never creates or funds a wallet.
+By default it obtains account state and free work from the Pursekeeper door;
+an explicit `--rpc-url` can select another trusted node. The tool is pinned to
+`https://pursekeeper.dev/v1/hash` and the example
 caps both the call and the journal lifetime at 0.001 XNO. Obtain and independently
 verify the current merchant destination before constructing a policy. A quote
 can change; the tool fetches and validates a fresh quote at action time.
@@ -58,7 +59,7 @@ example can be run as follows. It can result in a real transfer:
 
 ```sh
 python examples/live_agent.py --live --wallet-file /chosen/wallet.json \
-  --rpc-url https://chosen-nano-rpc.example --pay-to nano_CHOSEN_ALLOWLISTED_ADDRESS \
+  --pay-to nano_CHOSEN_ALLOWLISTED_ADDRESS \
   --journal /chosen/existing/directory/payment-journal.jsonl \
   --request-id one-specific-operation --text 'public synthetic test'
 ```
@@ -76,12 +77,17 @@ backups deliberately and never put a real wallet, seed or secret in this repo.
 An incoming seed may first need a signed receive/open block before it becomes a
 spendable balance. This example checks spendable balance but does not create or
 broadcast a receive block.
-The example uses only the explicitly configured RPC, but the SDK can ask that
-RPC for proof of work and can fall back to local computation. It always supplies
-work even where `extra.workOptional` permits omitting it; a slow signer can
-outlive the quote and be refused. Neither an actual paid call nor that PoW path
-was tested in this pass. The operator is responsible for RPC trust, ledger
-confirmation and safe custody.
+If `extra.workOptional` is true (or `extra.work` says `optional`), the signer
+omits proof of work using the scheme's string `"0"` placeholder. Otherwise it
+asks the configured source for work and validates it. The SDK can fall back to
+local computation with a general-purpose RPC; the Pursekeeper adapter fails
+closed if its free work endpoint is unavailable. A slow signer can outlive the
+quote and be refused. Neither a paid call nor a real work path was tested in
+the initial offline pass. The account-state source is trusted: a dishonest node
+can misstate the balance, changing the real transfer amount despite a quoted
+cap. Independently verify the previous block, balance and frontier before using
+a funded account. The operator is responsible for ledger confirmation and safe
+custody.
 
 The client is intentionally narrow: one configured endpoint, one quoted offer,
 Nano mainnet only, no redirect following, and no unknown offer extensions. It

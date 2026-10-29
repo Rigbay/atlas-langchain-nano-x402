@@ -12,26 +12,27 @@ from langchain_core.messages import AIMessage
 from nano_pay.rpc import RPC
 from nano_pay.wallet import Wallet
 
-from atlas_x402 import GuardedClient, NanoPaySigner, Policy, make_paid_text_tool
+from atlas_x402 import GuardedClient, NanoPaySigner, Policy, PursekeeperRPC, make_paid_text_tool
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--live", action="store_true", required=True)
     parser.add_argument("--wallet-file", type=Path, required=True)
-    parser.add_argument("--rpc-url", required=True)
+    parser.add_argument("--rpc-url", help="optional trusted Nano RPC; otherwise use the Pursekeeper door")
     parser.add_argument("--pay-to", required=True)
     parser.add_argument("--journal", type=Path, required=True)
     parser.add_argument("--request-id", required=True)
     parser.add_argument("--text", required=True)
     args = parser.parse_args()
-    parts = urlsplit(args.rpc_url)
-    if parts.scheme != "https" or not parts.hostname or parts.username or parts.password or parts.fragment:
-        parser.error("RPC URL must be an explicit HTTPS URL without credentials or fragment")
+    if args.rpc_url:
+        parts = urlsplit(args.rpc_url)
+        if parts.scheme != "https" or not parts.hostname or parts.username or parts.password or parts.fragment:
+            parser.error("RPC URL must be an explicit HTTPS URL without credentials or fragment")
     if not args.wallet_file.is_file() or not args.journal.is_file():
         parser.error("the explicitly chosen wallet and initialized journal must already exist")
     wallet = Wallet(path=args.wallet_file).load()
-    rpc = RPC(urls=[args.rpc_url], work_urls=[])
+    rpc = RPC(urls=[args.rpc_url], work_urls=[]) if args.rpc_url else PursekeeperRPC()
     raw = 10**27  # 0.001 XNO; per-call and lifetime of this journal.
     # A freshly seeded account can have a receivable balance but no spendable
     # balance until a receive/open block has been processed separately.

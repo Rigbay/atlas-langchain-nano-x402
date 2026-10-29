@@ -82,15 +82,30 @@ class NanoPaySigner:
     """Adapter for an explicitly supplied, already loaded nano_pay wallet/RPC.
 
     The caller is responsible for wallet custody and RPC trust. This adapter does
-    not discover, create, load, print, or fund any wallet. The SDK builds valid
-    work even when the merchant permits workOptional, rather than using a
-    workless optimization. Neither path has been tested with real funds here.
+    not discover, create, load, print, or fund any wallet. When the quote
+    expressly allows it, the signer returns a correctly signed workless block.
+    Otherwise the SDK builds a block with locally validated proof of work.
+    Both paths require a trusted, truthful account-state provider.
     """
     def __init__(self, wallet, rpc):
         self.wallet = wallet
         self.rpc = rpc
 
-    def sign(self, destination, amount_raw):
+    def sign(self, destination, amount_raw, work_optional=False):
+        if work_optional:
+            import nanopy
+            account = self.wallet.synced_account(self.rpc)
+            if account.raw_bal < amount_raw:
+                raise Refused("insufficient spendable balance")
+            if account.frontier == "0" * 64:
+                raise Refused("an unopened account cannot send")
+            recipient = nanopy.Account(addr=destination)
+            block = nanopy.StateBlock(account, account.rep, account.raw_bal - amount_raw,
+                                     account.frontier, recipient.pk)
+            account._sign(block)
+            payload = block.dict_
+            payload["work"] = "0"
+            return payload, block.hash_
         block, block_hash, _work_root = self.wallet.build_payment_block(
             self.rpc, destination, amount_raw)
         return block, block_hash
@@ -263,7 +278,8 @@ class GuardedClient:
                 # Even if signing crashes, the reservation stays and blocks another signature.
                 if self.clock() - started >= ttl:
                     raise Refused("quote expired before signing; reservation retained")
-                block, block_hash = self.signer.sign(destination, amount)
+                work_optional = extra.get("workOptional") is True or extra.get("work") == "optional"
+                block, block_hash = self.signer.sign(destination, amount, work_optional)
                 if (not isinstance(block, dict) or not isinstance(block_hash, str) or len(block_hash) != 64
                         or any(c not in "0123456789abcdefABCDEF" for c in block_hash)):
                     raise Refused("signer returned an invalid result; reservation retained")

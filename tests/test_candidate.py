@@ -16,6 +16,7 @@ import requests
 
 from atlas_x402.client import (GuardedClient, NanoPaySigner, Policy, Refused,
                                RequestsTransport, initialize_journal)
+from atlas_x402.door import PursekeeperRPC
 
 RAW = 10**27
 DEST = "nano_synthetic_fixture_destination"
@@ -29,9 +30,10 @@ STATE.mkdir(parents=True)
 
 
 class FakeSigner:
-    def __init__(self): self.calls = 0
-    def sign(self, destination, amount):
+    def __init__(self): self.calls = 0; self.optional = []
+    def sign(self, destination, amount, work_optional=False):
         self.calls += 1
+        self.optional.append(work_optional)
         return {"type": "state", "signature": "synthetic"}, "a" * 64
 
 
@@ -80,6 +82,7 @@ class Tests(unittest.TestCase):
         payload = json.loads(base64.b64decode(self.transport.last_header))
         self.assertEqual(payload["accepted"], OFFER)
         self.assertEqual(payload["payload"]["block"]["link_as_account"], DEST)
+        self.assertEqual(self.signer.optional, [True])
         self.assertEqual(result["block_hash"], "a" * 64)
         self.assertEqual(result["settlement"], "unverified")
         journal = self.path.read_text()
@@ -186,6 +189,42 @@ class Tests(unittest.TestCase):
         self.assertEqual(wallet.args, ("rpc-fixture", DEST, RAW))
         self.assertEqual((block, h), ({"fixture": True}, "a" * 64))
 
+    def test_quote_requiring_work_does_not_select_workless_signing(self):
+        self.transport.quote["accepts"][0]["extra"] = {"work": "required", "workOptional": False}
+        self.call()
+        self.assertEqual(self.signer.optional, [False])
+
+    def test_door_account_info_requires_valid_complete_state(self):
+        door = PursekeeperRPC()
+        door._request = lambda *args, **kwargs: {"found": True, "frontier": "a" * 64,
+            "balance_raw": str(RAW), "representative": "nano_fixture"}
+        self.assertEqual(door.account_info("nano_fixture")["balance"], str(RAW))
+        door._request = lambda *args, **kwargs: {"found": False}
+        self.assertIsNone(door.account_info("nano_fixture"))
+        for invalid in [{}, {"found": True}, {"found": True, "frontier": "z" * 64,
+                        "balance_raw": str(RAW), "representative": "nano_fixture"}]:
+            door._request = lambda *args, _value=invalid, **kwargs: _value
+            with self.assertRaises(Refused): door.account_info("nano_fixture")
+
+    def test_workless_signed_block_is_valid_and_never_generates_work(self):
+        import nanopy
+        from nano_pay.wallet import Wallet
+        account = nanopy.Account(sk="42" * 32)  # Public synthetic key; no funds.
+        account.frontier = "01" * 32
+        account.raw_bal = 2 * RAW
+        recipient = nanopy.Account(pk="02" * 32)
+        wallet = Wallet(path=self.path.with_suffix(".unused-wallet"))
+        wallet.synced_account = lambda _rpc: account
+        wallet.build_payment_block = lambda *_args: self.fail("work must not be requested")
+        block, block_hash = NanoPaySigner(wallet, object()).sign(recipient.addr, RAW, True)
+        self.assertEqual(block["work"], "0")
+        self.assertEqual(block["link"], recipient.pk)
+        self.assertEqual(block["balance"], str(RAW))
+        reconstructed = nanopy.StateBlock(account, account.rep, int(block["balance"]),
+                                           block["previous"], block["link"], block["signature"], "")
+        self.assertEqual(reconstructed.hash_, block_hash)
+        self.assertTrue(reconstructed.verify_signature())
+
     def test_real_nanopy_block_signing_with_public_synthetic_key(self):
         import nanopy
         from nano_pay.wallet import Wallet
@@ -236,7 +275,7 @@ class Transport:
         r._content = b'{}' if payment_header else json.dumps(quote).encode()
         return r
 class Signer:
-    def sign(self, destination, amount): return {"fixture":True}, "b"*64
+    def sign(self, destination, amount, work_optional=False): return {"fixture":True}, "b"*64
 path, gate, number = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3]
 gate.with_name(gate.name + "." + number + ".ready").write_text("ready")
 for _ in range(4500):
