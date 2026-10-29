@@ -1,0 +1,32 @@
+name: Publish reviewed Nano package
+
+on:
+  push:
+    tags:
+      - v0.1.0
+
+permissions: {}
+
+jobs:
+  publish:
+    if: github.repository == 'Rigbay/atlas-langchain-nano-x402'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/atlas-langchain-nano-x402/
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out the tagged revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify the exact release wheel and reviewed code
+        run: python3 scripts/verify_release.py
+      - name: Publish the verified wheel to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086
+        with:
+          packages-dir: release/v0.1.0/
+          print-hash: true
