@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+test-state/
+.venv/
+*.wallet
+*wallet*.json
+*.jsonl
+.env
+.env.*
+*.pem
+*.key
