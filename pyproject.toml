@@ -1,13 +1,20 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "atlas-langchain-nano-x402"
 version = "0.1.0"
 description = "Experimental guarded LangChain x402 Nano client"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = ["langchain==1.4.7", "feeless402==0.2.13", "nanopy==28.0.1.post26", "requests==2.34.2"]
+
+[project.urls]
+Repository = "https://github.com/Rigbay/atlas-langchain-nano-x402"
+Issues = "https://github.com/pursekeeper/api/issues/133"
 
 [tool.setuptools.packages.find]
 where = ["src"]
